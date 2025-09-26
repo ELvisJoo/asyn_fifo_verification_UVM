@@ -1,0 +1,98 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景和标题 -->
+  <rect width="800" height="600" fill="white"/>
+  <text x="400" y="30" font-family="Arial" font-size="24" text-anchor="middle" font-weight="bold">异步FIFO顶层RTL结构框图</text>
+  
+  <!-- 顶层模块 -->
+  <rect x="100" y="60" width="600" height="500" fill="none" stroke="black" stroke-width="2"/>
+  <text x="400" y="90" font-family="Arial" font-size="18" text-anchor="middle" font-weight="bold">asyn_fifo</text>
+  
+  <!-- 参数说明 -->
+  <text x="120" y="120" font-family="Arial" font-size="14">参数:</text>
+  <text x="150" y="140" font-family="Arial" font-size="14">DSIZE = 8 (数据位宽)</text>
+  <text x="150" y="160" font-family="Arial" font-size="14">ASIZE = 4 (地址位宽)</text>
+  
+  <!-- 输入输出端口组 -->
+  <!-- 写时钟域信号 -->
+  <text x="120" y="200" font-family="Arial" font-size="14" font-weight="bold">写时钟域信号:</text>
+  <text x="140" y="220" font-family="Arial" font-size="14">输入: wclk, wrst_n, winc, wdata[7:0]</text>
+  <text x="140" y="240" font-family="Arial" font-size="14">输出: wfull</text>
+  
+  <!-- 读时钟域信号 -->
+  <text x="500" y="200" font-family="Arial" font-size="14" font-weight="bold">读时钟域信号:</text>
+  <text x="520" y="220" font-family="Arial" font-size="14">输入: rclk, rrst_n, rinc</text>
+  <text x="520" y="240" font-family="Arial" font-size="14">输出: rdata[7:0], rempty</text>
+  
+  <!-- 内部子模块 -->
+  <!-- 存储单元 -->
+  <rect x="150" y="280" width="150" height="80" fill="none" stroke="black" stroke-width="2"/>
+  <text x="225" y="310" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">fifomem</text>
+  <text x="225" y="330" font-family="Arial" font-size="12" text-anchor="middle">存储单元</text>
+  
+  <!-- 写指针与满标志 -->
+  <rect x="400" y="280" width="150" height="80" fill="none" stroke="black" stroke-width="2"/>
+  <text x="475" y="310" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">wptr_full</text>
+  <text x="475" y="330" font-family="Arial" font-size="12" text-anchor="middle">写指针与满标志</text>
+  
+  <!-- 读指针与空标志 -->
+  <rect x="150" y="400" width="150" height="80" fill="none" stroke="black" stroke-width="2"/>
+  <text x="225" y="430" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">rptr_empty</text>
+  <text x="225" y="450" font-family="Arial" font-size="12" text-anchor="middle">读指针与空标志</text>
+  
+  <!-- 读指针同步到写时钟域 -->
+  <rect x="400" y="400" width="150" height="80" fill="none" stroke="black" stroke-width="2"/>
+  <text x="475" y="430" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">sync_r2w</text>
+  <text x="475" y="450" font-family="Arial" font-size="12" text-anchor="middle">读指针同步到写时钟域</text>
+  
+  <!-- 写指针同步到读时钟域 -->
+  <rect x="600" y="340" width="150" height="80" fill="none" stroke="black" stroke-width="2"/>
+  <text x="675" y="370" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">sync_w2r</text>
+  <text x="675" y="390" font-family="Arial" font-size="12" text-anchor="middle">写指针同步到读时钟域</text>
+  
+  <!-- 连接线 -->
+  <!-- 信号连接线 - 使用不同颜色区分不同类型信号 -->
+  
+  <!-- 写地址线 -->
+  <line x1="300" y1="310" x2="400" y2="310" stroke="blue" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="350" y="300" font-family="Arial" font-size="12" text-anchor="middle">waddr</text>
+  
+  <!-- 读地址线 -->
+  <line x1="225" y1="360" x2="225" y2="400" stroke="blue" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="215" y="380" font-family="Arial" font-size="12" text-anchor="end">raddr</text>
+  
+  <!-- 写指针到同步模块 -->
+  <line x1="550" y1="310" x2="600" y2="310" stroke="green" stroke-width="1.5"/>
+  <line x1="600" y1="310" x2="600" y2="340" stroke="green" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="575" y="300" font-family="Arial" font-size="12" text-anchor="middle">wptr</text>
+  
+  <!-- 读指针到同步模块 -->
+  <line x1="225" y1="480" x2="225" y2="500" stroke="green" stroke-width="1.5"/>
+  <line x1="225" y1="500" x2="475" y2="500" stroke="green" stroke-width="1.5"/>
+  <line x1="475" y1="500" x2="475" y2="480" stroke="green" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="350" y="510" font-family="Arial" font-size="12" text-anchor="middle">rptr</text>
+  
+  <!-- 同步后读指针到写指针模块 -->
+  <line x1="475" y1="400" x2="475" y2="360" stroke="purple" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="485" y="380" font-family="Arial" font-size="12" text-anchor="start">wq2_rptr</text>
+  
+  <!-- 同步后写指针到读指针模块 -->
+  <line x1="675" y1="340" x2="675" y2="440" stroke="purple" stroke-width="1.5"/>
+  <line x1="675" y1="440" x2="300" y2="440" stroke="purple" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="500" y="450" font-family="Arial" font-size="12" text-anchor="middle">rq2_wptr</text>
+  
+  <!-- 写满信号 -->
+  <line x1="500" y1="320" x2="500" y2="240" stroke="red" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="510" y="280" font-family="Arial" font-size="12" text-anchor="start">wfull</text>
+  
+  <!-- 读空信号 -->
+  <line x1="225" y1="430" x2="225" y2="240" stroke="red" stroke-width="1.5"/>
+  <line x1="225" y1="240" x2="550" y2="240" stroke="red" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="350" y="230" font-family="Arial" font-size="12" text-anchor="middle">rempty</text>
+  
+  <!-- 箭头标记定义 -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="black"/>
+    </marker>
+  </defs>
+</svg>
