@@ -1,0 +1,17 @@
+../../fifo_uvm_test/tb/top_tb.sv
+../../fifo_uvm_test/tc/my_case0.sv
+../../fifo_uvm_test/tc/my_case1.sv
+../../fifo_uvm_test/vip/base_test.sv
+../../fifo_uvm_test/vip/fifo_chk_rst.sv
+../../fifo_uvm_test/vip/fifo_rst_mon.sv
+../../fifo_uvm_test/vip/in_monitor.sv
+../../fifo_uvm_test/vip/i_agt.sv
+../../fifo_uvm_test/vip/my_driver.sv
+../../fifo_uvm_test/vip/my_env.sv
+../../fifo_uvm_test/vip/my_if.sv
+../../fifo_uvm_test/vip/my_model.sv
+../../fifo_uvm_test/vip/my_scoreboard.sv
+../../fifo_uvm_test/vip/my_sequencer.sv
+../../fifo_uvm_test/vip/my_transaction.sv
+../../fifo_uvm_test/vip/out_monitor.sv
+../../fifo_uvm_test/vip/o_agt.sv
