@@ -85,137 +85,82 @@
 ```
 // 异步FIFO顶层模块：连接读写时钟域的子模块
 
-module asyn\_fifo #(
+`timescale 1ns / 1ps
 
-&#x20;   parameter DSIZE = 8,      // 数据位宽
+module asyn_fifo #(
+    parameter ADDRSIZEL = 4,   // 地址位宽 DEPTH = 1<<ADDRSIZEl; 
+    parameter DATASIZEL = 8)   // 数据位宽
+(
+    // 写时钟域信号
+    input  wclk,               // 写时钟
+    input  wrst_n,             // 写复位（低有效）
+    input  winc,               // 写使能
+    input  [DATASIZEL-1 : 0] wdata,// 写入数据
+    output wfull,              // 写满标志
 
-&#x20;   parameter ASIZE = 4       // 地址位宽（深度=2^ASIZE）
+     // 读时钟域信号
+    input  rclk,               // 读时钟
+    input  rrst_n,             // 读复位（低有效）
+    input  rinc,               // 读使能
+    output [DATASIZEL-1 : 0] rdata,// 读出数据
+    output rempty              // 读空标志
 
-)(
-
-&#x20;   // 写时钟域信号
-
-&#x20;   input  wclk,             // 写时钟
-
-&#x20;   input  wrst\_n,           // 写复位（低有效）
-
-&#x20;   input  winc,             // 写使能
-
-&#x20;   input  \[DSIZE-1:0] wdata,// 写入数据
-
-&#x20;   output wfull,            // 写满标志
-
-&#x20;  &#x20;
-
-&#x20;   // 读时钟域信号
-
-&#x20;   input  rclk,             // 读时钟
-
-&#x20;   input  rrst\_n,           // 读复位（低有效）
-
-&#x20;   input  rinc,             // 读使能
-
-&#x20;   output \[DSIZE-1:0] rdata,// 读出数据
-
-&#x20;   output rempty            // 读空标志
-
-);
-
+    );
 // 内部信号：读写指针及同步后指针
+wire [ADDRSIZEL - 1 : 0] waddr,raddr;// 实际地址(二进制)
+wire [ADDRSIZEL : 0] rptr,wptr;// 读写指针(格雷码,多1位用于空满判断)
+wire [ADDRSIZEL : 0] wq2_rptr,rq2_wptr;// 跨时钟域同步后的指针
 
-wire \[ASIZE-1:0] waddr, raddr;          // 实际地址（二进制）
-
-wire \[ASIZE:0]   wptr, rptr;            // 读写指针（格雷码，多1位用于空满判断）
-
-wire \[ASIZE:0]   wq2\_rptr, rq2\_wptr;    // 跨时钟域同步后的指针
-
-// 1. 存储单元：双端口RAM，读写时钟独立
-
-fifomem #(DSIZE, ASIZE) fifomem (
-
-&#x20;   .wdata  (wdata),
-
-&#x20;   .waddr  (waddr),
-
-&#x20;   .wclken (winc && !wfull),  // 写使能有效且未满
-
-&#x20;   .wclk   (wclk),
-
-&#x20;   .raddr  (raddr),
-
-&#x20;   .rdata  (rdata)
-
+// 1. 存储单元:双端口RAM,读写时钟独立
+fifomem fifomem11(
+.waddr(waddr),
+.raddr(raddr),
+.wdata(wdata),
+.wclk(wclk),
+.wclken(winc),
+.wfull(wfull),
+.rdata(rdata)
 );
 
-// 2. 写指针与满标志生成
-
-wptr\_full #(ASIZE) wptr\_full (
-
-&#x20;   .wclk    (wclk),
-
-&#x20;   .wrst\_n  (wrst\_n),
-
-&#x20;   .winc    (winc),
-
-&#x20;   .wq2\_rptr(wq2\_rptr),       // 同步后的读指针
-
-&#x20;   .waddr   (waddr),          // 输出实际写地址
-
-&#x20;   .wptr    (wptr),           // 输出写指针（格雷码）
-
-&#x20;   .wfull   (wfull)           // 写满标志
-
+// 2. 读指针同步到写时钟域（两级寄存器同步，减少亚稳态）
+sync_r2w sync_r2w11(
+.rptr(rptr),
+.wclk(wclk),
+.wrst_n(wrst_n),
+.wq2_rptr(wq2_rptr)
 );
 
-// 3. 读指针与空标志生成
-
-rptr\_empty #(ASIZE) rptr\_empty (
-
-&#x20;   .rclk    (rclk),
-
-&#x20;   .rrst\_n  (rrst\_n),
-
-&#x20;   .rinc    (rinc),
-
-&#x20;   .rq2\_wptr(rq2\_wptr),       // 同步后的写指针
-
-&#x20;   .raddr   (raddr),          // 输出实际读地址
-
-&#x20;   .rptr    (rptr),           // 输出读指针（格雷码）
-
-&#x20;   .rempty  (rempty)          // 读空标志
-
+// 3. 写指针同步到读时钟域
+sync_w2r sync_w2r11(
+.wptr(wptr),
+.rq2_wptr(rq2_wptr),
+.rclk(rclk),
+.rrst_n(rrst_n)
 );
 
-// 4. 读指针同步到写时钟域（两级寄存器同步，减少亚稳态）
+// 4. 读指针与空标志生成
+rptr_empty  rpte_empty11(
+.rrst_n(rrst_n),
+.rclk(rclk),
+.rinc(rinc),
+.rq2_wptr(rq2_wptr),
+.raddr(raddr),
+.rptr(rptr),
+.rempty(rempty)
+);   
 
-sync\_r2w #(ASIZE) sync\_r2w (
-
-&#x20;   .wclk    (wclk),
-
-&#x20;   .wrst\_n  (wrst\_n),
-
-&#x20;   .rptr    (rptr),           // 原始读指针
-
-&#x20;   .wq2\_rptr(wq2\_rptr)        // 同步到写时钟域的读指针
-
+// 5. 写指针与满标志生成
+wptr_full wptr_full11(
+.wclk(wclk),
+.wrst_n(wrst_n),
+.winc(winc),
+.wq2_rptr(wq2_rptr),
+.wptr(wptr),
+.waddr(waddr),
+.wfull(wfull)
 );
-
-// 5. 写指针同步到读时钟域
-
-sync\_w2r #(ASIZE) sync\_w2r (
-
-&#x20;   .rclk    (rclk),
-
-&#x20;   .rrst\_n  (rrst\_n),
-
-&#x20;   .wptr    (wptr),           // 原始写指针
-
-&#x20;   .rq2\_wptr(rq2\_wptr)        // 同步到读时钟域的写指针
-
-);
-
 endmodule
+
 ```
 
 #### 2. 存储单元 `fifomem.v`
@@ -223,51 +168,36 @@ endmodule
 
 
 ```
-// FIFO存储单元：双端口RAM，支持异步读写
+`timescale 1ns / 1ps
 
-module fifomem #(
+// FIFO存储单元:双端口RAM,支持异步读写
+module fifomem  #( 
+  parameter DATASIZEl = 8,  //number of mem datasize bits
+  parameter ADDRSIZEl = 4)  //number of mem address bits
+(
+  input  [ADDRSIZEl-1 : 0] waddr,
+  input  [DATASIZEl-1 : 0] wdata,
+  input  wclken,
+  input  wfull,
+  input  wclk,
+  input  [ADDRSIZEl-1 : 0] raddr,
+  output [DATASIZEl-1 : 0] rdata
 
-&#x20;   parameter DSIZE = 8,
+ );
+ 
+ //RTL verilog memory model
+ localparam DEPTH = 1<<ADDRSIZEl;
+ reg [DATASIZEl-1 : 0] mem[DEPTH-1 : 0];
+ 
+//READ
+ assign rdata = mem[raddr];
 
-&#x20;   parameter ASIZE = 4
-
-)(
-
-&#x20;   input  \[DSIZE-1:0] wdata,  // 写入数据
-
-&#x20;   input  \[ASIZE-1:0] waddr,  // 写地址
-
-&#x20;   input              wclken, // 写使能（含满标志判断）
-
-&#x20;   input              wclk,   // 写时钟
-
-&#x20;   input  \[ASIZE-1:0] raddr,  // 读地址
-
-&#x20;   output \[DSIZE-1:0] rdata   // 读出数据
-
-);
-
-// 定义RAM数组（深度=2^ASIZE）
-
-reg \[DSIZE-1:0] mem \[0:(1<\<ASIZE)-1];
-
-// 写操作：同步到写时钟
-
-always @(posedge wclk) begin
-
-&#x20;   if (wclken) begin
-
-&#x20;       mem\[waddr] <= wdata;  // 写使能有效时写入数据
-
-&#x20;   end
-
-end
-
-// 读操作：异步读（或同步到读时钟，根据需求调整）
-
-assign rdata = mem\[raddr];  // 组合逻辑输出，读地址变化立即反映
-
+//WRITE
+ always@(posedge wclk)
+   if(wclken && ~wfull) mem[waddr] = wdata;
+    
 endmodule
+
 ```
 
 #### 3. 写指针与满标志 `wptr_full.v`
@@ -275,86 +205,46 @@ endmodule
 
 
 ```
+`timescale 1ns / 1ps
+
 // 写指针管理与满标志生成
-
-module wptr\_full #(
-
-&#x20;   parameter ASIZE = 4
-
-)(
-
-&#x20;   input                 wclk,
-
-&#x20;   input                 wrst\_n,
-
-&#x20;   input                 winc,         // 写请求
-
-&#x20;   input  \[ASIZE:0]      wq2\_rptr,    // 同步后的读指针（格雷码）
-
-&#x20;   output reg \[ASIZE-1:0] waddr,       // 实际写地址（二进制）
-
-&#x20;   output reg \[ASIZE:0]  wptr,         // 写指针（格雷码，多1位）
-
-&#x20;   output reg            wfull         // 满标志
-
+module wptr_full #(parameter ADDRSIZEL = 4)
+(
+input wclk,wrst_n,winc,
+input [ADDRSIZEL : 0] wq2_rptr, // 同步后的读指针（格雷码）
+output reg [ADDRSIZEL : 0] wptr, // 写指针(格雷码,多1位)
+output [ADDRSIZEL-1 : 0] waddr, // 实际写地址（二进制）
+output reg wfull
 );
 
-reg \[ASIZE:0] wbin;  // 二进制写指针（用于自增）
+reg [ADDRSIZEL : 0] wbin;// 二进制写指针（用于自增）
+wire [ADDRSIZEL : 0] wbnext,wgnext;
 
-wire \[ASIZE:0] wgray\_next, wbin\_next;
+// 指针寄存器更新（同步复位）
+always@(posedge wclk or negedge wrst_n)
+if(!wrst_n)
+  {wbin,wptr} <= 0;
+else
+  {wbin,wptr} <= {wbnext,wgnext};// 输出格雷码指针
 
-// 1. 二进制指针自增逻辑
+// 实际写地址(取指针低ASIZE位)
+assign waddr = wbin[ADDRSIZEL-1 : 0]; // 二进制地址用于RAM访问
 
-assign wbin\_next = wbin + (winc & \~wfull);  // 写使能有效且未满时自增
+// 二进制指针自增逻辑
+assign wbnext = wbin + (winc & ~wfull); // 写使能有效且未满时自增
+assign wgnext = (wbnext>>1) ^ (wbnext); // 二进制转格雷码
 
-assign wgray\_next = (wbin\_next >> 1) ^ wbin\_next;  // 二进制转格雷码
+// 格雷码比较
+wire wfull_val;
+assign wfull_val = (wgnext == {~wq2_rptr[ADDRSIZEL : ADDRSIZEL-1],wq2_rptr[ADDRSIZEL-2 : 0]});
 
-// 2. 指针寄存器更新（同步复位）
-
-always @(posedge wclk or negedge wrst\_n) begin
-
-&#x20;   if (!wrst\_n) begin
-
-&#x20;       wbin <= 0;
-
-&#x20;       wptr <= 0;
-
-&#x20;   end else begin
-
-&#x20;       wbin <= wbin\_next;
-
-&#x20;       wptr <= wgray\_next;  // 输出格雷码指针
-
-&#x20;   end
-
-end
-
-// 3. 实际写地址（取指针低ASIZE位）
-
-always @(\*) begin
-
-&#x20;   waddr = wbin\[ASIZE-1:0];  // 二进制地址用于RAM访问
-
-end
-
-// 4. 满标志判断：写指针与同步后的读指针高两位相反，其余位相同
-
-always @(posedge wclk or negedge wrst\_n) begin
-
-&#x20;   if (!wrst\_n) begin
-
-&#x20;       wfull <= 1'b0;
-
-&#x20;   end else begin
-
-&#x20;       // 格雷码比较：(wgray\_next == {\~wq2\_rptr\[ASIZE:ASIZE-1], wq2\_rptr\[ASIZE-2:0]})
-
-&#x20;       wfull <= (wgray\_next == {\~wq2\_rptr\[ASIZE], \~wq2\_rptr\[ASIZE-1], wq2\_rptr\[ASIZE-2:0]});
-
-&#x20;   end
-
-end
-
+// 满标志判断：写指针与同步后的读指针高两位相反，其余位相同
+always@(posedge wclk or negedge wrst_n)
+if(!wrst_n)
+  wfull <= 0;
+else
+  wfull <= wfull_val;
+  
 endmodule
 ```
 
@@ -363,84 +253,43 @@ endmodule
 
 
 ```
+`timescale 1ns / 1ps
+
 // 读指针管理与空标志生成
-
-module rptr\_empty #(
-
-&#x20;   parameter ASIZE = 4
-
-)(
-
-&#x20;   input                 rclk,
-
-&#x20;   input                 rrst\_n,
-
-&#x20;   input                 rinc,         // 读请求
-
-&#x20;   input  \[ASIZE:0]      rq2\_wptr,    // 同步后的写指针（格雷码）
-
-&#x20;   output reg \[ASIZE-1:0] raddr,       // 实际读地址（二进制）
-
-&#x20;   output reg \[ASIZE:0]  rptr,         // 读指针（格雷码，多1位）
-
-&#x20;   output reg            rempty        // 空标志
-
+module rptr_empty #(parameter ADDRSIZEL = 4)
+(
+input rrst_n,rclk,rinc,
+input [ADDRSIZEL : 0] rq2_wptr,
+output [ADDRSIZEL-1 : 0] raddr,
+output reg [ADDRSIZEL : 0] rptr,
+output reg rempty
 );
 
-reg \[ASIZE:0] rbin;  // 二进制读指针
+reg [ADDRSIZEL : 0] rbin;// 二进制读指针
+wire [ADDRSIZEL : 0] rbnext,rgnext;
+wire rempty_val;
 
-wire \[ASIZE:0] rgray\_next, rbin\_next;
+// 指针寄存器更新
+always@(posedge rclk or negedge rrst_n)
+if(!rrst_n)
+  {rptr,rbin} <= 0;
+else
+  {rptr,rbin} <= {rgnext,rbnext};
 
-// 1. 二进制指针自增逻辑
+//  实际读地址
+assign raddr = rbin[ADDRSIZEL-1 : 0];
 
-assign rbin\_next = rbin + (rinc & \~rempty);  // 读使能有效且未空时自增
+// 二进制指针自增逻辑
+assign rbnext = rbin + (rinc & ~rempty);// 读使能有效且未空时自增  
+assign rgnext = rbnext>>1 ^ rbnext;// 二进制转格雷码
 
-assign rgray\_next = (rbin\_next >> 1) ^ rbin\_next;  // 二进制转格雷码
-
-// 2. 指针寄存器更新
-
-always @(posedge rclk or negedge rrst\_n) begin
-
-&#x20;   if (!rrst\_n) begin
-
-&#x20;       rbin <= 0;
-
-&#x20;       rptr <= 0;
-
-&#x20;   end else begin
-
-&#x20;       rbin <= rbin\_next;
-
-&#x20;       rptr <= rgray\_next;
-
-&#x20;   end
-
-end
-
-// 3. 实际读地址
-
-always @(\*) begin
-
-&#x20;   raddr = rbin\[ASIZE-1:0];
-
-end
-
-// 4. 空标志判断：读指针与同步后的写指针完全相等
-
-always @(posedge rclk or negedge rrst\_n) begin
-
-&#x20;   if (!rrst\_n) begin
-
-&#x20;       rempty <= 1'b1;  // 复位时为空
-
-&#x20;   end else begin
-
-&#x20;       rempty <= (rgray\_next == rq2\_wptr);  // 格雷码相等则为空
-
-&#x20;   end
-
-end
-
+// 空标志判断:读指针与同步后的写指针完全相等 assign rempty = (rq2_wptr == rptr) ? 1 : 0;  
+assign rempty_val = (rgnext == rq2_wptr) ? 1 : 0;
+always@(posedge rclk or negedge rrst_n)
+  if(!rrst_n) 
+    rempty <= 1;//复位时为空
+  else
+    rempty <= rempty_val;//格雷码相等则为空
 endmodule
 ```
 
@@ -451,85 +300,48 @@ endmodule
 ```
 // 读指针同步到写时钟域（两级D触发器同步，降低亚稳态概率）
 
-module sync\_r2w #(
+`timescale 1ns / 1ps
 
-&#x20;   parameter ASIZE = 4
+// 读指针同步到写时钟域
+module sync_r2w #(parameter ADDRSIZEL = 4)
+(
+input [ADDRSIZEL : 0] rptr,// 读时钟域的读指针（格雷码）
+input wclk,wrst_n,
+output reg [ADDRSIZEL : 0] wq2_rptr // 同步到写时钟域的读指针（两级同步后）
+ );
+ reg [ADDRSIZEL : 0] wq1_rptr;
+ 
+ // 两级同步
+ always @(posedge wclk or negedge wrst_n)
+ if(!wrst_n)
+   {wq2_rptr,wq1_rptr} <= 0;
+ else
+   {wq2_rptr,wq1_rptr} <= {wq1_rptr,rptr};
+  //  wq1_rptr <= rptr;      // 第一级锁存
+  //  wq2_rptr <= wq1_rptr;  // 第二级锁存，输出同步后的值
+endmodule
 
-)(
-
-&#x20;   input              wclk,
-
-&#x20;   input              wrst\_n,
-
-&#x20;   input  \[ASIZE:0]   rptr,       // 读时钟域的读指针（格雷码）
-
-&#x20;   output reg \[ASIZE:0] wq2\_rptr   // 同步到写时钟域的读指针（两级同步后）
-
+// 写指针同步到读时钟域,结构与sync_r2w完全相同
+module sync_w2r #(parameter ADDRSIZEL = 4)
+(
+input [ADDRSIZEL : 0] wptr,// 写时钟域的写指针(格雷码)
+output reg [ADDRSIZEL : 0] rq2_wptr, // 同步到读时钟域的写指针（两级同步后）
+input rclk,rrst_n
 );
 
-reg \[ASIZE:0] wq1\_rptr;  // 一级同步寄存器
+reg [ADDRSIZEL : 0] rq1_wptr;
 
-// 两级同步：第一级打拍
-
-always @(posedge wclk or negedge wrst\_n) begin
-
-&#x20;   if (!wrst\_n) begin
-
-&#x20;       wq1\_rptr <= 0;
-
-&#x20;       wq2\_rptr <= 0;
-
-&#x20;   end else begin
-
-&#x20;       wq1\_rptr <= rptr;      // 第一级锁存
-
-&#x20;       wq2\_rptr <= wq1\_rptr;  // 第二级锁存，输出同步后的值
-
-&#x20;   end
-
-end
+// 两级同步
+always@(posedge rclk or negedge rrst_n)
+if(!rrst_n)
+  {rq2_wptr,rq1_wptr} <= 0;
+else
+  {rq2_wptr,rq1_wptr} <= {rq1_wptr,wptr};
+  //  rq1_wptr <= wptr;    // 第一级锁存
+  //  rq2_wptr <= rq1_wptr;// 第二级锁存，输出同步后的值
 
 endmodule
 
-// 写指针同步到读时钟域（结构与sync\_r2w完全相同）
-
-module sync\_w2r #(
-
-&#x20;   parameter ASIZE = 4
-
-)(
-
-&#x20;   input              rclk,
-
-&#x20;   input              rrst\_n,
-
-&#x20;   input  \[ASIZE:0]   wptr,       // 写时钟域的写指针（格雷码）
-
-&#x20;   output reg \[ASIZE:0] rq2\_wptr   // 同步到读时钟域的写指针
-
-);
-
-reg \[ASIZE:0] rq1\_wptr;
-
-always @(posedge rclk or negedge rrst\_n) begin
-
-&#x20;   if (!rrst\_n) begin
-
-&#x20;       rq1\_wptr <= 0;
-
-&#x20;       rq2\_wptr <= 0;
-
-&#x20;   end else begin
-
-&#x20;       rq1\_wptr <= wptr;
-
-&#x20;       rq2\_wptr <= rq1\_wptr;
-
-&#x20;   end
-
-end
-
-endmodule
 ```
 
 ### 二、UVM 验证环境原理框图
@@ -644,5 +456,6 @@ endmodule
 3.  **接口（my\_if）**：连接验证环境与 DUT，包含读写时钟域的所有信号（如 wclk、rclk、wdata、rdata 等）。
 
 通过以上结构，验证环境可自动生成激励、监控 DUT 行为、比对结果，实现对异步 FIFO 的全面功能验证。
+
 
 
