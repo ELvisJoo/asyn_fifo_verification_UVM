@@ -1,153 +1,135 @@
-`ifndef MY_DRIVER__SV
-`define MY_DRIVER__SV
+`ifndef MY_DRIVER_SV
+`define MY_DRIVER_SV
 
+import uvm_pkg::*;
+`include "uvm_macros.svh"
 `include "./vip/my_transaction.sv"
-class my_driver extends uvm_driver#(my_transaction);
+`include "./vip/my_if.sv"
 
-   virtual interface my_if my_if2;
-     
-   `uvm_component_utils(my_driver)
-
-   covergroup cov_label;
-      option.per_instance = 1;
-      option.auto_bin_max = 2;
-   coverpoint my_if2.wfull;      
-   coverpoint my_if2.rempty;
-      
-   endgroup
-
-   function new(string name = "my_driver", uvm_component parent = null);
-      super.new(name,parent);
-      cov_label = new();
-   endfunction
-   
-   virtual function void build_phase(uvm_phase phase);
-   super.build_phase(phase);
-   if(!uvm_config_db#(virtual my_if)::get(this,"","vif",my_if2))
-     `uvm_fatal("my_driver","virtual interface must be set for vif!!!")
-   endfunction
- 
-   extern task main_phase(uvm_phase phase);
-   extern task drive_one_pkt(my_transaction tr);
-endclass 
-
-task my_driver::main_phase(uvm_phase phase);
-    `uvm_info("my_driver","begin!",UVM_LOW)
-   // phase.raise_objection(this);
-   //my_if2.winc = 1;
-   //my_if2.rinc = 1;
-   
-     
-   while(1) begin     
-     seq_item_port.get_next_item(req);
-     drive_one_pkt(req);
-     seq_item_port.item_done();
-   end    
-   
-   //repeat(100) @(posedge my_if2.wclk);
-  // phase.drop_objection(this);
+// 写驱动:负责写时钟域的激励驱动
+class w_driver extends uvm_driver #(my_transaction);
+    virtual my_if.WDRIVER vif;  // 虚拟接口,写驱动视角
     
-endtask
+    `uvm_component_utils(w_driver)
+    
+    function new(string name = "w_driver", uvm_component parent = null);
+        super.new(name, parent);
+    endfunction
+    
+    virtual function void build_phase(uvm_phase phase);
+        super.build_phase(phase);
+        // 从配置数据库获取接口
+        if(!uvm_config_db#(virtual my_if.WDRIVER)::get(this, "", "w_if", vif)) begin
+            `uvm_fatal("W_DRIVER", "无法获取写接口w_if")
+        end
+    endfunction
+    
+    virtual task reset_phase(uvm_phase phase);
+        super.reset_phase(phase);
+        phase.raise_objection(this);
+        // 复位期间初始化信号
+        vif.wdrv_cb.wdata <= '0;
+        vif.wdrv_cb.winc  <= 1'b0;
+        @(posedge vif.wrst_n);  // 等待复位释放
+        phase.drop_objection(this);
+    endtask
+    
+    virtual task main_phase(uvm_phase phase);
+        super.main_phase(phase);
+        forever begin
+            my_transaction tr;
+            // 从sequencer获取事务
+            seq_item_port.get_next_item(tr);
+            
+            // 驱动信号到接口
+            @(vif.wdrv_cb);
+            // 当FIFO未满时才驱动有效写操作
+            if(!vif.wdrv_cb.wfull) begin
+                vif.wdrv_cb.wdata <= tr.wdata;
+                vif.wdrv_cb.winc  <= tr.winc;
+                `uvm_info("W_DRIVER", $sformatf("驱动写操作: %s", tr.convert2string()), UVM_HIGH)
+            end
+            else begin
+                // FIFO已满时,不驱动写使能
+                vif.wdrv_cb.winc  <= 1'b0;
+                `uvm_warning("W_DRIVER", "FIFO已满,禁止写操作")
+            end
+            
+            // 通知sequencer事务已完成
+            seq_item_port.item_done();
+        end
+    endtask
+endclass
 
-task my_driver::drive_one_pkt(my_transaction tr);
-   byte unsigned data_q[];
-   int data_size,j;
-   
-   data_size = tr.pack_bytes(data_q)/8;
-   
-   `uvm_info("my_driver","begin to drive one pkt",UVM_LOW)
-   for(int i = 0; i < data_size; i++) begin
-      @my_if2.ckw;
-      if((!my_if2.ckw.wfull) && (my_if2.ckw.winc == 1)) begin 
-         cov_label.sample(); 
-         my_if2.ckw.wdata <= data_q[i];
-         `uvm_info("my_driver",$sformatf("%0d number is sent,number is %0h",j++,my_if2.ckw.wdata),UVM_LOW) 
-      end  else if((!my_if2.ckw.wfull) && (my_if2.ckw.winc == 0)) begin
-            my_if2.ckw.winc <= 1;
-            i--;
-         end else begin
-            my_if2.ckw.winc <= 0;
-            i--;
-         end
-      end  
-endtask
+// 读驱动:负责读时钟域的激励驱动
+class r_driver extends uvm_driver #(my_transaction);
+    virtual my_if.RDRIVER vif;  // 虚拟接口,读驱动视角
+    
+    `uvm_component_utils(r_driver)
+    
+    function new(string name = "r_driver", uvm_component parent = null);
+        super.new(name, parent);
+    endfunction
+    
+    virtual function void build_phase(uvm_phase phase);
+        super.build_phase(phase);
+        // 从配置数据库获取接口
+        if(!uvm_config_db#(virtual my_if.RDRIVER)::get(this, "", "r_if", vif)) begin
+            `uvm_fatal("R_DRIVER", "无法获取读接口r_if")
+        end
+    endfunction
+    
+    virtual task reset_phase(uvm_phase phase);
+        super.reset_phase(phase);
+        phase.raise_objection(this);
+        // 复位期间初始化信号
+        vif.rdrv_cb.rinc  <= 1'b0;
+        @(posedge vif.rrst_n);  // 等待复位释放
+        phase.drop_objection(this);
+    endtask
+    
+    virtual task main_phase(uvm_phase phase);
+        super.main_phase(phase);
+        forever begin
+            my_transaction tr;
+            // 从sequencer获取事务
+            seq_item_port.get_next_item(tr);
+            
+            // 驱动信号到接口
+            @(vif.rdrv_cb);
+            // 当FIFO非空时才驱动有效读操作
+            if(!vif.rdrv_cb.rempty) begin
+                vif.rdrv_cb.rinc  <= tr.rinc;
+                `uvm_info("R_DRIVER", $sformatf("驱动读操作: %s", tr.convert2string()), UVM_HIGH)
+            end
+            else begin
+                // FIFO为空时,不驱动读使能
+                vif.rdrv_cb.rinc  <= 1'b0;
+                `uvm_warning("R_DRIVER", "FIFO为空,禁止读操作")
+            end
+            
+            // 通知sequencer事务已完成
+            seq_item_port.item_done();
+        end
+    endtask
+endclass
+
 `endif
 
-
-  /* bit  [47 : 0] tmp_data;
-   bit  [7 : 0] data_q[$];
-   int  j;
-   
-  //push dmac to data_q
-  tmp_data = tr.dmac;
-  for(int i = 0; i < 6; i++) begin
-     data_q.push_back(tmp_data[7 : 0]);
-     tmp_data = ( tmp_data >> 8 );
-  end
-   
-  tmp_data = tr.smac;
-  //push smac to data_q
-  for(int i = 0; i < 6; i++) begin
-     data_q.push_back(tmp_data[7 : 0]);
-     tmp_data = ( tmp_data >> 8 );
-  end
-  
-  //push ether_type to data_q
-   tmp_data = tr.ether_type;
-  for(int i = 0; i < 2; i++) begin
-     data_q.push_back(tmp_data[7 : 0]);
-     tmp_data = ( tmp_data >> 8 );
-  end
-
-  //push payload to data_q
-  for(int i = 0; i < 200; i++) begin
-     data_q.push_back(tr.pload[i] );
-  end
-
-  //push crc to data_q
-  tmp_data = tr.crc;
-  for(int i = 0; i < 4; i++) begin
-     data_q.push_back(tmp_data[7 : 0]);
-     tmp_data = ( tmp_data >> 8);
-  end
-  
-  my_if2.rinc = 1;
-  
-  `uvm_info("my_driver","begin to drive one pkt",UVM_LOW)
-  repeat(3) @(posedge my_if2.wclk);
-  
-  //int i = 1;
-  while(data_q.size() > 0) begin
-     wait(!my_if2.wfull) begin
-     repeat(2) @(posedge my_if2.wclk);
-     my_if2.wdata = data_q.pop_front();
-     `uvm_info("my_driver",$sformatf("%0d number is sent,number is %0h",j++,my_if2.wdata),UVM_LOW)
-     end
-end
-*/
-
-/* for(int i = 0; i < 2; i++) begin
-    req = new("req");
-    assert(req.randomize() with {pload.size == 200;});
-    drive_one_pkt(req);
-   end
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// 针对异步 FIFO 的跨时钟域特性,这里采用了分离的写驱动 (w_driver) 和读驱动 (r_driver) 设计:
+// 1. 驱动分离:
+// 写驱动 (w_driver):在写时钟域 (wclk) 下工作,负责驱动wdata和winc信号
+// 读驱动 (r_driver):在读时钟域 (rclk) 下工作,负责驱动rinc信号
+// 2. 接口处理:
+// 分别使用my_if.WDRIVER和my_if.RDRIVER modport,确保访问权限正确
+// 通过 UVM 配置数据库获取虚拟接口,实现环境的灵活性
+// 3. 复位处理:
+// 在复位阶段初始化驱动信号,确保复位期间信号状态正确
+// 等待复位释放后才开始正常驱动
+// 4. 驱动控制:
+// 写驱动会检查wfull信号,FIFO 满时自动禁止写操作
+// 读驱动会检查rempty信号,FIFO 空时自动禁止读操作
+// 避免产生无效激励,提高验证效率
+// 5. 事务处理:
+// 通过seq_item_port从 sequencer 获取事务
+// 完成驱动后通过item_done()通知 sequencer
