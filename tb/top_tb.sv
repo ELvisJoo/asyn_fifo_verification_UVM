@@ -1,142 +1,93 @@
-`timescale 1ns/1ps
-
+`timescale 1ns / 1ps
 `include "uvm_macros.svh"
 import uvm_pkg::*;
 
-`include "./vip/my_driver.sv"
-`include "./vip/my_if.sv"
-`include "./vip/my_transaction.sv"
-`include "./vip/my_env.sv"
-`include "./vip/in_monitor.sv"
-`include "./vip/out_monitor.sv"
-`include "./vip/i_agt.sv"
-`include "./vip/o_agt.sv"
-`include "./vip/my_model.sv"
-`include "./vip/my_scoreboard.sv"
-`include "./vip/my_sequencer.sv"
-`include "./vip/base_test.sv"
-`include "./vip/fifo_rst_mon.sv"
-`include "./vip/fifo_chk_rst.sv"
-`include "./tc/my_case0.sv"
-`include "./tc/my_case1.sv"
-									
+`include "./vip/my_if.sv          "  
+`include "./vip/my_transaction.sv "   
+`include "./vip/my_sequencer.sv   "
+`include "./vip/my_sequence.sv    "
+`include "./vip/my_driver.sv      "
+`include "./vip/in_monitor.sv     "  
+`include "./vip/out_monitor.sv    "  
+`include "./vip/i_agt.sv          "
+`include "./vip/o_agt.sv          " 
+`include "./vip/my_model.sv       "    
+`include "./vip/my_scoreboard.sv  "
+`include "./vip/fifo_rst_mon.sv   "  
+`include "./vip/fifo_chk_rst.sv   " 
+`include "./vip/base_test.sv      "
+`include "./vip/my_env.sv         "
+
 module top_tb;
-logic wclk,rclk,wrst_n,rrst_n;
-
-my_if my_if1(wclk,rclk,wrst_n,rrst_n);
-//my_if.DUT my_if9();
-
-fifo_rst_mon fifo_rst_mon1;
-fifo_chk_rst fifo_chk_rst1;
-event reset_e_w;
-event reset_e_r;
-
-initial begin   
-    run_test();
-end
-
-
-initial
-begin
-wclk = 0;
-rclk = 0;
-wrst_n = 1;
-rrst_n = 1;
-#2 wrst_n = 0;
-   rrst_n = 0;
-   my_if1.winc = 0;
-   my_if1.rinc = 0;
-#2 wrst_n = 1;
-   rrst_n = 1;
-//#3 my_if1.winc = 0;
-//#1 my_if1.rinc = 0;
-//#3 my_if1.winc = 1;
-//#4 my_if1.rinc = 1;
-end
-
-always #1 wclk = ~wclk;
-always #3 rclk = ~rclk;
-
-initial begin
-  uvm_config_db#(virtual my_if)::set(null,"uvm_test_top.env.i_agt1.a_drv","vif",my_if1);
-  uvm_config_db#(virtual my_if)::set(null,"uvm_test_top.env.i_agt1.mon","vif",my_if1);
-  uvm_config_db#(virtual my_if)::set(null,"uvm_test_top.env.o_agt1.mon","vif",my_if1);
-  
-end
-
-initial begin
-fifo_rst_mon1 = new(reset_e_w,reset_e_r);
-fifo_chk_rst1 = new(reset_e_w,reset_e_r);
-fifo_rst_mon1.my_if6 = my_if1;
-fifo_chk_rst1.my_if7 = my_if1;
-fork
-fifo_rst_mon1.run();
-fifo_chk_rst1.run();
-join
-end
-
-
-
-
-
-
-
-/*initial
-begin
-$vcdpluson;
-end
-*/
-
-initial begin
-    $fsdbDumpfile("tb.fsdb");
-    $fsdbDumpvars;
-    $fsdbDumpon;
-end
-
-
-
-asyn_fifo asyn_fifo1(
-.wclk,
-.rclk,
-.wrst_n,
-.rrst_n,
-.winc(my_if1.winc),
-.rinc(my_if1.rinc),
-.wdata(my_if1.wdata),
-.wfull(my_if1.wfull),
-.rempty(my_if1.rempty),
-.rdata(my_if1.rdata)
-);
+    // 参数定义,与DUT保持一致
+    parameter ADDRSIZEL = 4;
+    parameter DATASIZEL = 8;
+    
+    // 时钟和复位信号
+    reg wclk;
+    reg rclk;
+    reg wrst_n;
+    reg rrst_n;
+    
+    // 实例化接口
+    my_if #(.ADDRSIZEL(ADDRSIZEL), .DATASIZEL(DATASIZEL)) 
+        fifo_if (.wclk(wclk), .wrst_n(wrst_n), .rclk(rclk), .rrst_n(rrst_n));
+    
+    // 实例化DUT(异步FIFO)
+    asyn_fifo #(.ADDRSIZEL(ADDRSIZEL), .DATASIZEL(DATASIZEL)) 
+        dut (
+            .wclk      (wclk),
+            .wrst_n    (wrst_n),
+            .winc      (fifo_if.winc),
+            .wdata     (fifo_if.wdata),
+            .wfull     (fifo_if.wfull),
+            
+            .rclk      (rclk),
+            .rrst_n    (rrst_n),
+            .rinc      (fifo_if.rinc),
+            .rdata     (fifo_if.rdata),
+            .rempty    (fifo_if.rempty)
+        );
+    
+    // 生成写时钟(100MHz)
+    initial begin
+        wclk = 1'b0;
+        forever #5 wclk = ~wclk;  // 周期10ns
+    end
+    
+    // 生成读时钟(50MHz,与写时钟异步)
+    initial begin
+        rclk = 1'b0;
+        forever #10 rclk = ~rclk;  // 周期20ns
+    end
+    
+    // 生成复位信号
+    initial begin
+        // 初始复位
+        wrst_n = 1'b0;
+        rrst_n = 1'b0;
+        
+        // 释放复位(可错开释放时间,模拟异步复位)
+        #100;
+        wrst_n = 1'b1;
+        #50;  // 写复位先释放,读复位后释放
+        rrst_n = 1'b1;
+    end
+    
+    // UVM测试启动
+    initial begin
+        // 将接口注册到UVM配置数据库
+        uvm_config_db#(virtual my_if)::set(null, "uvm_test_top", "my_if", fifo_if);
+        
+        // 启动UVM测试
+        run_test();
+    end
+    
+    // 波形dump(用于Verdi查看)
+    initial begin
+        $fsdbDumpfile("waveform.fsdb");
+        $fsdbDumpvars(0, top_tb);  // dump整个测试平台的信号
+        $fsdbDumpSVA(0, top_tb);   // dump断言信息
+    end
 
 endmodule
-
-
-
-
-/*for(int i = 0; i < 200; i++)
-begin
-@(negedge wclk)
-if(!wfull)  
-begin
-wdata =$urandom;
-$display("@%0t: %d number sent",$time,i+1);
-end
-end
-*/
-//$dumpfile(".vcd");
-//$dumpvars(0,tb_asyn_fifo.asyn_fifo1);
-//#10000;
-//$stop;
-
-/*reg wclk,rclk,wrst_n,rrst_n,winc,rinc;
-reg [7 : 0] wdata;
-wire wfull,rempty;
-wire [7 : 0] rdata;
-*/
-/*initial begin
-    my_driver drv;
-    drv = new("drv",null);
-    drv.main_phase(null);
-       
-end
-*/
